@@ -293,6 +293,37 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 <div id="debugBanner" class="debug-banner"><button onclick="document.getElementById('debugBanner').classList.remove('show')">إغلاق</button><div id="debugBannerContent"></div></div>
 
 <script>
+/* ============ STORAGE COMPATIBILITY SHIM ============
+   window.storage only exists inside Claude's artifact environment.
+   When this file is hosted independently (GitHub Pages, any server, or opened
+   directly as a file), we fall back to the browser's own localStorage so the
+   app keeps working as a standalone website with no external dependency. */
+if(!window.storage){
+  const LS_PREFIX = 'erp_local_';
+  window.storage = {
+    get: async (key) => {
+      const raw = localStorage.getItem(LS_PREFIX+key);
+      return raw !== null ? {key, value: raw} : null;
+    },
+    set: async (key, value) => {
+      localStorage.setItem(LS_PREFIX+key, value);
+      return {key, value};
+    },
+    delete: async (key) => {
+      localStorage.removeItem(LS_PREFIX+key);
+      return {key, deleted:true};
+    },
+    list: async (prefix) => {
+      const keys = [];
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith(LS_PREFIX+(prefix||''))) keys.push(k.slice(LS_PREFIX.length));
+      }
+      return {keys};
+    }
+  };
+}
+
 /* ============ ICONS (inline SVG, Feather-style) ============ */
 const ICONS = {
   dashboard:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
@@ -477,7 +508,7 @@ function openCustomerModal(id){
 function closeCustomerModal(){ state.customerModal=null; render(); }
 function saveCustomer(e){
   e.preventDefault(); const f=e.target;
-  const data = {name:f.cName.value.trim(), phone:f.cPhone.value.trim(), vat:f.cVat.value.trim(), address:f.cAddress.value.trim()};
+  const data = {name:fv(f,'cName').trim(), phone:fv(f,'cPhone').trim(), vat:fv(f,'cVat').trim(), address:fv(f,'cAddress').trim()};
   if(!data.name){ showToast("أدخل اسم العميل", "error"); return; }
   if(state.customerModal.id){
     const idx = state.customers.findIndex(c=>c.id===state.customerModal.id);
@@ -504,10 +535,10 @@ function closeExpenseModal(){ state.expenseModal=null; render(); }
 function saveExpense(e){
   e.preventDefault(); const f=e.target;
   const data = {
-    date: new Date(f.eDate.value).toISOString(),
-    category: f.eCategory.value.trim() || EXPENSE_CATEGORIES[0],
-    description: f.eDesc.value.trim(),
-    amount: parseFloat(f.eAmount.value)||0
+    date: new Date(fv(f,'eDate')).toISOString(),
+    category: fv(f,'eCategory').trim() || EXPENSE_CATEGORIES[0],
+    description: fv(f,'eDesc').trim(),
+    amount: parseFloat(fv(f,'eAmount'))||0
   };
   if(data.amount<=0){ showToast("أدخل مبلغاً صحيحاً", "error"); return; }
   if(state.expenseModal.id){
@@ -533,7 +564,7 @@ function openSupplierModal(id){
 function closeSupplierModal(){ state.supplierModal=null; render(); }
 function saveSupplier(e){
   e.preventDefault(); const f=e.target;
-  const data = {name:f.sName.value.trim(), phone:f.sPhone.value.trim(), vat:f.sVat.value.trim(), address:f.sAddress.value.trim()};
+  const data = {name:fv(f,'sName').trim(), phone:fv(f,'sPhone').trim(), vat:fv(f,'sVat').trim(), address:fv(f,'sAddress').trim()};
   if(!data.name){ showToast("أدخل اسم المورد", "error"); return; }
   if(state.supplierModal.id){
     const idx = state.suppliers.findIndex(s=>s.id===state.supplierModal.id);
@@ -630,11 +661,11 @@ function closeProductModal(){ state.productModal=null; render(); }
 function saveProduct(e){
   e.preventDefault(); const f=e.target;
   const data = {
-    name:f.pName.value.trim(), sku:f.pSku.value.trim(), price:parseFloat(f.pPrice.value)||0,
-    img: f.pImg.value.trim() || "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIj48cmVjdCB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI0YzRjRGNyIvPjxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTgwIiBmaWxsPSIjRURFRUYyIi8+PHBhdGggZD0iTTE3MCAxOTAgTDI1MCAxNTAgTDMzMCAxOTAgTDMzMCAzMTAgTDI1MCAzNTAgTDE3MCAzMTAgWiIgZmlsbD0iI0U0RjNFRSIgc3Ryb2tlPSIjMUY3QTYzIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNMTcwIDE5MCBMMjUwIDIzMCBMMzMwIDE5MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUY3QTYzIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48bGluZSB4MT0iMjUwIiB5MT0iMjMwIiB4Mj0iMjUwIiB5Mj0iMzUwIiBzdHJva2U9IiMxRjdBNjMiIHN0cm9rZS13aWR0aD0iOCIvPjwvc3ZnPg==",
+    name:fv(f,'pName').trim(), sku:fv(f,'pSku').trim(), price:parseFloat(fv(f,'pPrice'))||0,
+    img: fv(f,'pImg').trim() || "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIj48cmVjdCB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI0YzRjRGNyIvPjxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTgwIiBmaWxsPSIjRURFRUYyIi8+PHBhdGggZD0iTTE3MCAxOTAgTDI1MCAxNTAgTDMzMCAxOTAgTDMzMCAzMTAgTDI1MCAzNTAgTDE3MCAzMTAgWiIgZmlsbD0iI0U0RjNFRSIgc3Ryb2tlPSIjMUY3QTYzIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNMTcwIDE5MCBMMjUwIDIzMCBMMzMwIDE5MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUY3QTYzIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48bGluZSB4MT0iMjUwIiB5MT0iMjMwIiB4Mj0iMjUwIiB5Mj0iMzUwIiBzdHJva2U9IiMxRjdBNjMiIHN0cm9rZS13aWR0aD0iOCIvPjwvc3ZnPg==",
     trackStock: true,
-    stock: parseFloat(f.pStock.value)||0,
-    lowStock: parseFloat(f.pLow.value)||0
+    stock: parseFloat(fv(f,'pStock'))||0,
+    lowStock: parseFloat(fv(f,'pLow'))||0
   };
   if(!data.name){ showToast("أدخل اسم الصنف", "error"); return; }
   if(state.productModal.id){
@@ -658,7 +689,7 @@ function openStockAdjust(id){
 function closeStockAdjust(){ state.stockAdjustModal=null; render(); }
 function submitStockAdjust(e){
   e.preventDefault(); const f=e.target;
-  const delta = parseFloat(f.delta.value)||0;
+  const delta = parseFloat(fv(f,'delta'))||0;
   const item = state.items.find(i=>i.id===state.stockAdjustModal.id);
   if(item){ item.stock = item.stock + delta; }
   saveItems(); state.stockAdjustModal=null; showToast("تم تحديث الكمية"); render();
@@ -839,7 +870,7 @@ function closePaymentModal(){ state.paymentModal=null; render(); }
 function submitPayment(e){
   e.preventDefault();
   const f = e.target;
-  const amount = parseFloat(f.amount.value)||0;
+  const amount = parseFloat(fv(f,'amount'))||0;
   const inv = state.invoices.find(i=>i.id===state.paymentModal.invoiceId);
   if(!inv || amount<=0){ showToast("أدخل مبلغاً صحيحاً", "error"); return; }
   inv.amountPaid = Math.min(inv.total, (inv.amountPaid||0) + amount);
@@ -1738,6 +1769,15 @@ function renderInvoiceView(){
 }
 
 /* ============ EVENTS ============ */
+function fv(form, name){
+  const el = form.querySelector('[name="'+name+'"]');
+  return el ? el.value : '';
+}
+function fchecked(form, name){
+  const el = form.querySelector('[name="'+name+'"]');
+  return el ? el.checked : false;
+}
+
 function safe(fn){
   return function(...args){
     try{ return fn.apply(this, args); }
@@ -1898,10 +1938,10 @@ function attachHandlers(){
   if(sf) sf.onsubmit = safe((e)=>{
     e.preventDefault(); const f=e.target;
     state.settings = {...state.settings,
-      companyName: f.companyName.value.trim()||state.settings.companyName,
-      currency: f.currency.value.trim()||state.settings.currency,
-      crNumber: f.crNumber.value.trim(), vatNumber: f.vatNumber.value.trim(),
-      address: f.address.value.trim(), taxRatePercent: parseFloat(f.taxRatePercent.value)||0
+      companyName: fv(f,'companyName').trim()||state.settings.companyName,
+      currency: fv(f,'currency').trim()||state.settings.currency,
+      crNumber: fv(f,'crNumber').trim(), vatNumber: fv(f,'vatNumber').trim(),
+      address: fv(f,'address').trim(), taxRatePercent: parseFloat(fv(f,'taxRatePercent'))||0
     };
     saveSettings(); showToast("تم حفظ الإعدادات"); render();
   });
